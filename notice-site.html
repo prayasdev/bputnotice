@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BPUT Notices</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .logo {
+            width: 50px;
+            height: 50px;
+            margin-right: 15px;
+        }
+        h1 {
+            margin: 0;
+            color: #1a5276;
+        }
+        .loading {
+            text-align: center;
+            padding: 30px;
+            font-style: italic;
+            color: #7f8c8d;
+        }
+        .error {
+            background-color: #fadbd8;
+            padding: 15px;
+            border-radius: 5px;
+            color: #c0392b;
+            margin-bottom: 20px;
+        }
+        .notice {
+            border-bottom: 1px solid #eee;
+            padding: 15px 0;
+        }
+        .notice h3 {
+            margin: 0 0 5px 0;
+        }
+        .notice-date {
+            font-size: 0.9em;
+            color: #7f8c8d;
+            margin-bottom: 10px;
+        }
+        .notice-link {
+            display: inline-block;
+            color: #2980b9;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .notice-link:hover {
+            text-decoration: underline;
+        }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin-top: 30px;
+        }
+        .pagination button {
+            margin: 0 5px;
+            padding: 8px 15px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .pagination button:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+        }
+        .page-info {
+            margin: 0 15px;
+            display: flex;
+            align-items: center;
+        }
+        .refresh-btn {
+            margin-left: auto;
+            padding: 8px 15px;
+            background-color: #2ecc71;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+            .notice h3 {
+                font-size: 1em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <img src="https://cdn.discordapp.com/attachments/937148637874618419/1354155213019287732/Official_logo_of_Biju_Patanaik_University_of_Technology.png" 
+             alt="BPUT Logo" class="logo">
+        <h1>BPUT Notices</h1>
+        <button class="refresh-btn" onclick="fetchNotices()">Refresh</button>
+    </div>
+    
+    <div id="content">
+        <div class="loading">Loading notices...</div>
+    </div>
+    
+    <div class="pagination">
+        <button id="prev-btn" onclick="prevPage()" disabled>Previous</button>
+        <div class="page-info">Page <span id="current-page">1</span> of <span id="total-pages">1</span></div>
+        <button id="next-btn" onclick="nextPage()">Next</button>
+    </div>
+
+    <script>
+        // Configuration
+        const targetUrl = 'https://www.bput.ac.in/news.php';
+        const corsProxyUrl = 'https://corsproxy.io/?';
+        const noticesPerPage = 10;
+        
+        // State
+        let allNotices = [];
+        let currentPage = 1;
+        let totalPages = 1;
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', fetchNotices);
+        
+        // Fetch notices from the target URL
+        async function fetchNotices() {
+            showLoading();
+            
+            try {
+                const response = await fetch(corsProxyUrl + encodeURIComponent(targetUrl));
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);
+                }
+                
+                const html = await response.text();
+                allNotices = parseNotices(html);
+                
+                // Reset to first page when refreshing
+                currentPage = 1;
+                totalPages = Math.ceil(allNotices.length / noticesPerPage);
+                
+                displayNotices();
+                updatePaginationControls();
+            } catch (error) {
+                showError(`Error fetching notices: ${error.message}`);
+                console.error('Error fetching notices:', error);
+            }
+        }
+        
+        // Parse HTML to extract notices
+        function parseNotices(html) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const table = doc.querySelector('table#customers');
+            
+            if (!table) {
+                throw new Error('Could not find notices table on the page');
+            }
+            
+            const notices = [];
+            const rows = table.querySelectorAll('tbody > tr');
+            
+            // Skip the header row
+            for (let i = 1; i < rows.length; i++) {
+                const cols = rows[i].querySelectorAll('td');
+                
+                if (cols.length === 4) {
+                    const title = cols[2].textContent.replace('New', '').trim();
+                    const date = cols[1].textContent.trim();
+                    const linkElem = cols[3].querySelector('a');
+                    const link = linkElem ? new URL(linkElem.getAttribute('href'), targetUrl).href : null;
+                    
+                    notices.push({
+                        title,
+                        date,
+                        link
+                    });
+                }
+            }
+            
+            return notices;
+        }
+        
+        // Display the current page of notices
+        function displayNotices() {
+            const startIndex = (currentPage - 1) * noticesPerPage;
+            const endIndex = Math.min(startIndex + noticesPerPage, allNotices.length);
+            const currentNotices = allNotices.slice(startIndex, endIndex);
+            
+            const contentDiv = document.getElementById('content');
+            
+            if (currentNotices.length === 0) {
+                contentDiv.innerHTML = '<div class="error">No notices found</div>';
+                return;
+            }
+            
+            let html = '';
+            
+            currentNotices.forEach(notice => {
+                html += `
+                    <div class="notice">
+                        <h3>${notice.title}</h3>
+                        <div class="notice-date">Published: ${notice.date}</div>
+                        ${notice.link ? `<a href="${notice.link}" class="notice-link" target="_blank">View Notice</a>` : ''}
+                    </div>
+                `;
+            });
+            
+            contentDiv.innerHTML = html;
+        }
+        
+        // Show loading state
+        function showLoading() {
+            document.getElementById('content').innerHTML = '<div class="loading">Loading notices...</div>';
+        }
+        
+        // Show error message
+        function showError(message) {
+            document.getElementById('content').innerHTML = `<div class="error">${message}</div>`;
+        }
+        
+        // Update pagination controls
+        function updatePaginationControls() {
+            document.getElementById('current-page').textContent = currentPage;
+            document.getElementById('total-pages').textContent = totalPages;
+            
+            document.getElementById('prev-btn').disabled = currentPage <= 1;
+            document.getElementById('next-btn').disabled = currentPage >= totalPages;
+        }
+        
+        // Go to previous page
+        function prevPage() {
+            if (currentPage > 1) {
+                currentPage--;
+                displayNotices();
+                updatePaginationControls();
+            }
+        }
+        
+        // Go to next page
+        function nextPage() {
+            if (currentPage < totalPages) {
+                currentPage++;
+                displayNotices();
+                updatePaginationControls();
+            }
+        }
+    </script>
+</body>
+</html>
